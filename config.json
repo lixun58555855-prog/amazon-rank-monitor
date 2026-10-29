@@ -1,0 +1,16 @@
+{
+  "marketplace": "https://www.amazon.com",
+  "zip_code": "90001",
+  "max_pages": 2,
+  "targets": [
+    {
+      "keyword": "wireless earbuds",
+      "asins": ["B09X1KZZQ5", "B0B94ZWS5T"],
+      "note": "核心大词监控示例"
+    }
+  ],
+  "notification": {
+    "enabled": false,
+    "webhook_url": ""
+  }
+}
