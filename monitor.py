@@ -189,14 +189,29 @@ def run_monitor():
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',
                 '--disable-dev-shm-usage',
+                '--disable-infobars',
             ]
         )
 
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             locale="en-US",
-            viewport={"width": 1440, "height": 900}
+            viewport={"width": 1920, "height": 1080},
+            extra_http_headers={
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "accept-language": "en-US,en;q=0.9",
+                "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "upgrade-insecure-requests": "1",
+            }
         )
+
+        # 抹除 WebDriver 指纹
+        context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            window.chrome = { runtime: {} };
+        """)
 
         page = context.new_page()
 
@@ -225,15 +240,37 @@ def run_monitor():
                 encoded_kw = urllib.parse.quote_plus(keyword)
                 search_url = f"{marketplace}/s?k={encoded_kw}&page={page_num}"
                 
-                print(f"📄 正在检索第 {page_num} 页: {search_url}")
-                page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                print(f"📄 正在检索第 {page_num} 页 ...")
                 
-                # 破盾处理
-                if not handle_captcha_if_needed(page):
-                    print(f"❌ 第 {page_num} 页遭遇验证码卡顿，跳过该页")
-                    continue
+                if page_num == 1:
+                    # 优先通过首页搜索栏模拟真实用户搜索，规避 503 拦截
+                    search_box = page.query_selector('input#twotabsearchtextbox')
+                    if search_box:
+                        search_box.fill(keyword)
+                        search_box.press('Enter')
+                        page.wait_for_load_state('domcontentloaded')
+                    else:
+                        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                else:
+                    # 第 2 页及之后，优先模拟点击“Next”按钮
+                    next_btn = page.query_selector('a.s-pagination-next') or page.query_selector('a:has-text("Next")')
+                    if next_btn:
+                        next_btn.click()
+                        page.wait_for_load_state('domcontentloaded')
+                    else:
+                        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
 
-                # 模拟正常滚动以触发懒加载
+                # 破盾处理
+                handle_captcha_if_needed(page)
+
+                # 如果遭遇 503 "Sorry! Something went wrong!"，刷新重试
+                if "Sorry! Something went wrong!" in page.title():
+                    print("⚠️ 命中亚马逊 503 拦截，正在回退刷新...")
+                    page.wait_for_timeout(2000)
+                    page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                    handle_captcha_if_needed(page)
+
+                # 模拟滚动以触发懒加载
                 page.mouse.wheel(0, 1500)
                 page.wait_for_timeout(1500)
 
