@@ -1,16 +1,42 @@
 {
-  "marketplace": "https://www.amazon.com",
-  "zip_code": "90001",
-  "max_pages": 2,
-  "targets": [
+  "marketplaces": [
     {
-      "keyword": "dementia clock",
-      "asins": ["B07H4GDWYP", "B0B94ZWS5T"],
-      "note": "核心大词监控示例"
+      "site": "US",
+      "name": "美国站",
+      "base_url": "https://www.amazon.com",
+      "currency": "$",
+      "locations": [
+        { "city": "Los Angeles (美西)", "zip": "90001" },
+        { "city": "New York (美东)", "zip": "10001" },
+        { "city": "Chicago (美中)", "zip": "60601" }
+      ],
+      "max_pages": 2,
+      "targets": [
+        {
+          "keyword": "wireless earbuds",
+          "asins": ["B09X1KZZQ5", "B0B94ZWS5T"],
+          "note": "主力耳机与竞品"
+        }
+      ]
+    },
+    {
+      "site": "UK",
+      "name": "英国站 (可选示例)",
+      "enabled": false,
+      "base_url": "https://www.amazon.co.uk",
+      "currency": "£",
+      "locations": [
+        { "city": "London", "zip": "SW1A 1AA" },
+        { "city": "Manchester", "zip": "M1 1AE" }
+      ],
+      "max_pages": 1,
+      "targets": [
+        {
+          "keyword": "wireless earbuds",
+          "asins": ["B09X1KZZQ5"],
+          "note": "英国站监控"
+        }
+      ]
     }
-  ],
-  "notification": {
-    "enabled": false,
-    "webhook_url": ""
-  }
+  ]
 }
