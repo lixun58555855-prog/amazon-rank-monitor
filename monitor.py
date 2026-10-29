@@ -19,16 +19,21 @@ def load_config():
 def handle_captcha_if_needed(page, max_retries=3):
     """检测并使用 amazoncaptcha 自动破解亚马逊 Robot Check 验证码"""
     for attempt in range(1, max_retries + 1):
-        # 判断是否被拦截到验证码页面
-        captcha_form = page.query_selector('form[action="/errors/validateCaptcha"]')
+        title = page.title()
+        captcha_form = page.query_selector('form[action*="validateCaptcha"]')
         captcha_input = page.query_selector('input#captchacharacters')
+        is_robot_check = "Robot Check" in title or "CAPTCHA" in title.upper()
         
-        if not (captcha_form or captcha_input):
+        if not (captcha_form or captcha_input or is_robot_check):
             return True  # 没有验证码，安全通过
 
-        print(f"⚠️ [尝试 {attempt}/{max_retries}] 命中亚马逊验证码(Robot Check)，正在自动破解...")
+        input_elem = captcha_input or page.query_selector('input[type="text"]')
+        if not input_elem:
+            return True
+
+        print(f"⚠️ [尝试 {attempt}/{max_retries}] 命中亚马逊验证码(Robot Check: {title})，正在自动破解...")
         
-        img_element = page.query_selector('div.a-box-inner img') or page.query_selector('form img')
+        img_element = page.query_selector('div.a-box-inner img') or page.query_selector('form img') or page.query_selector('img[src*="captcha"]')
         if not img_element:
             print("❌ 未能定位验证码图片元素")
             return False
@@ -38,31 +43,28 @@ def handle_captcha_if_needed(page, max_retries=3):
             print("❌ 验证码图片链接为空")
             return False
 
-        # 使用 amazoncaptcha 本地高效识别
         solution = AmazonCaptcha.fromlink(img_url).solve()
         print(f"💡 验证码识别结果: {solution}")
 
-        if not solution or solution.strip() == "":
+        if not solution or solution.strip() == "" or solution == "Not solved":
             print("❌ 验证码识别失败，重试中...")
             page.reload()
             page.wait_for_timeout(2000)
             continue
 
-        page.fill('input#captchacharacters', solution)
+        input_elem.fill(solution)
         
-        # 点击提交
-        submit_btn = page.query_selector('button[type="submit"]')
+        submit_btn = page.query_selector('button[type="submit"]') or page.query_selector('button.a-button-text')
         if submit_btn:
             submit_btn.click()
         else:
             page.keyboard.press('Enter')
 
         page.wait_for_load_state('domcontentloaded')
-        page.wait_for_timeout(2500)
+        page.wait_for_timeout(3000)
 
-    # 最后再检查一次是否破盾成功
-    if page.query_selector('input#captchacharacters'):
-        print("❌ 连续破解验证码失败，需要检查环境！")
+    if "Robot Check" in page.title() or page.query_selector('input#captchacharacters'):
+        print("❌ 连续破解验证码失败，页面仍处于拦截状态！")
         return False
     
     print("✅ 验证码破盾成功，已进入页面！")
@@ -100,11 +102,23 @@ def parse_search_page(page, target_asins, page_num):
     """解析当前搜索页，识别广告位(Sponsored)与自然位(Organic)"""
     results = []
     
+    # 打印页面标题用于诊断
+    try:
+        print(f"🔍 [诊断] 页面标题: {page.title()} | 当前URL: {page.url}")
+    except Exception:
+        pass
+
     # 等待搜索结果列表加载
     items = page.query_selector_all('div[data-component-type="s-search-result"]')
     if not items:
         # 兼容备用选择器
         items = page.query_selector_all('div.s-result-item[data-asin]')
+
+    if not items:
+        # 如果还是没有，检查是否被阻拦或页面结构有变
+        body_text = page.inner_text('body') if page.query_selector('body') else ""
+        snippet = body_text.replace('\n', ' ')[:200]
+        print(f"⚠️ [诊断] 未找到商品卡片，页面摘要: {snippet}")
 
     print(f"🔍 第 {page_num} 页共解析到 {len(items)} 个商品卡片")
 
