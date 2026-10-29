@@ -83,32 +83,45 @@ def switch_location_zip(page, city_name, zip_code):
     print(f"\n📍 [城市切换] 准备切换至: {city_name} (邮编: {zip_code}) ...")
     try:
         page.evaluate("window.scrollTo(0, 0)")
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(1000)
 
+        # 检查是否命中验证码或错误页
+        handle_captcha_if_needed(page)
+        if "Sorry!" in page.title():
+            page.reload(wait_until="domcontentloaded")
+            handle_captcha_if_needed(page)
+
+        # 检查当前是否已经是该邮编
         clean_zip = zip_code.replace(" ", "").upper()
-        header_text = page.inner_text('#nav-global-location-slot') if page.query_selector('#nav-global-location-slot') else ""
-        if clean_zip in header_text.replace(" ", "").upper():
-            print(f"  ✅ 当前定位已包含目标邮编: {header_text.replace(chr(10), ' ')}，无需重复设置")
-            return True
+        current_loc = page.query_selector('#nav-global-location-slot') or page.query_selector('#glow-ingress-line2')
+        if current_loc:
+            curr_text = current_loc.inner_text().strip()
+            if clean_zip in curr_text.replace(" ", "").upper():
+                print(f"  ✅ 当前定位已是: {curr_text.replace(chr(10), ' ')}，无需切换")
+                return True
 
         # 点击切换定位入口
-        trigger = page.wait_for_selector('#nav-global-location-slot, #glow-ingress-line2, #nav-packard-glow-loc-icon', timeout=10000)
-        trigger.click()
+        trigger = page.query_selector('#nav-global-location-slot') or page.query_selector('#glow-ingress-line2') or page.query_selector('#nav-packard-glow-loc-icon') or page.query_selector('a#nav-global-location-popover-link')
+        if not trigger:
+            # 等待最多 5 秒
+            trigger = page.wait_for_selector('#nav-global-location-slot, #glow-ingress-line2', timeout=5000)
+
+        trigger.click(timeout=5000)
         page.wait_for_timeout(1500)
 
         # 填入邮编
-        zip_input = page.wait_for_selector('#GLUXZipUpdateInput, #GLUXZipUpdateInput_0', timeout=8000)
+        zip_input = page.wait_for_selector('#GLUXZipUpdateInput, #GLUXZipUpdateInput_0', timeout=6000)
         zip_input.fill("")
         zip_input.fill(zip_code)
         page.wait_for_timeout(500)
 
         # 点击更新
-        apply_btn = page.query_selector('#GLUXZipUpdate, input[aria-labelledby="GLUXZipUpdate-announce"]')
+        apply_btn = page.query_selector('#GLUXZipUpdate, input[aria-labelledby="GLUXZipUpdate-announce"], #GLUXZipUpdate input')
         if apply_btn:
-            apply_btn.click()
+            apply_btn.click(timeout=4000)
         else:
             zip_input.press("Enter")
-        page.wait_for_timeout(2500)
+        page.wait_for_timeout(2000)
 
         # 点击 Done 确认按钮（如果出现）
         done_btn = page.query_selector('button[name="glowDoneButton"], .a-popover-footer button, #GLUXConfirmClose')
@@ -122,8 +135,9 @@ def switch_location_zip(page, city_name, zip_code):
         page.wait_for_load_state('domcontentloaded')
         
         # 验证结果
-        after_text = page.inner_text('#nav-global-location-slot') if page.query_selector('#nav-global-location-slot') else ""
-        print(f"  🎉 邮编切换完成，当前定位: 【{after_text.replace(chr(10), ' ')}】")
+        after_slot = page.query_selector('#nav-global-location-slot') or page.query_selector('#glow-ingress-line2')
+        after_text = after_slot.inner_text().strip() if after_slot else "未知"
+        print(f"  🎉 邮编设置完成，当前配送定位: 【{after_text.replace(chr(10), ' ')}】")
         return True
     except Exception as e:
         print(f"  ⚠️ 切换邮编发生异常: {e}")
