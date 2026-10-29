@@ -82,66 +82,51 @@ def switch_location_zip(page, city_name, zip_code):
     """
     print(f"\n📍 [城市切换] 准备切换至: {city_name} (邮编: {zip_code}) ...")
     try:
-        # 回到顶部，确保顶部导航栏完全在可视区
         page.evaluate("window.scrollTo(0, 0)")
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(800)
 
-        # 1. 检查顶部导航栏当前的配送地址
-        loc_slot = page.query_selector('#nav-global-location-slot') or page.query_selector('#glow-ingress-line2')
-        if loc_slot:
-            current_text = loc_slot.inner_text().strip()
-            clean_zip = zip_code.replace(" ", "").upper()
-            clean_text = current_text.replace(" ", "").upper()
-            if clean_zip in clean_text:
-                print(f"  ✅ 当前已是目标邮编: {current_text}，无需重复切换")
-                return True
+        clean_zip = zip_code.replace(" ", "").upper()
+        header_text = page.inner_text('#nav-global-location-slot') if page.query_selector('#nav-global-location-slot') else ""
+        if clean_zip in header_text.replace(" ", "").upper():
+            print(f"  ✅ 当前定位已包含目标邮编: {header_text.replace(chr(10), ' ')}，无需重复设置")
+            return True
 
-        # 2. 点击配送地址触发弹出层 (使用 force=True 规避滚动遮挡)
-        trigger_selector = '#nav-global-location-slot' if page.query_selector('#nav-global-location-slot') else '#glow-ingress-line2'
-        page.click(trigger_selector, force=True, timeout=6000)
+        # 点击切换定位入口
+        trigger = page.wait_for_selector('#nav-global-location-slot, #glow-ingress-line2, #nav-packard-glow-loc-icon', timeout=10000)
+        trigger.click()
         page.wait_for_timeout(1500)
 
-        # 3. 等待弹出层渲染
-        zip_input = page.query_selector('#GLUXZipUpdateInput') or page.query_selector('#GLUXZipUpdateInput_0') or page.query_selector('input[aria-label*="zip" i]') or page.query_selector('input[aria-label*="postal" i]')
-        
-        if not zip_input:
-            print("  ⚠️ 弹窗中未找到邮编输入框，可能属于多国家选择模式")
-            close_btn = page.query_selector('button[name="glowDoneButton"]') or page.query_selector('.a-popover-header button')
-            if close_btn:
-                close_btn.click(force=True, timeout=3000)
-            return False
-
+        # 填入邮编
+        zip_input = page.wait_for_selector('#GLUXZipUpdateInput, #GLUXZipUpdateInput_0', timeout=8000)
         zip_input.fill("")
         zip_input.fill(zip_code)
         page.wait_for_timeout(500)
 
-        # 4. 点击 Apply / 更新 按钮
-        apply_btn = page.query_selector('#GLUXZipUpdate') or page.query_selector('input[aria-labelledby="GLUXZipUpdate-announce"]') or page.query_selector('#GLUXZipUpdate input')
+        # 点击更新
+        apply_btn = page.query_selector('#GLUXZipUpdate, input[aria-labelledby="GLUXZipUpdate-announce"]')
         if apply_btn:
-            apply_btn.click(force=True, timeout=4000)
+            apply_btn.click()
         else:
             zip_input.press("Enter")
-        page.wait_for_timeout(2000)
-
-        # 5. 点击 Done / Continue 确认按钮
-        done_btn = page.query_selector('button[name="glowDoneButton"]') or page.query_selector('.a-popover-footer button') or page.query_selector('#GLUXConfirmClose')
-        if done_btn:
-            try:
-                done_btn.click(force=True, timeout=3000)
-            except Exception:
-                pass
-        
-        page.wait_for_load_state('domcontentloaded')
         page.wait_for_timeout(2500)
 
-        # 6. 验证切换后结果
-        loc_slot_after = page.query_selector('#nav-global-location-slot') or page.query_selector('#glow-ingress-line2')
-        after_text = loc_slot_after.inner_text().strip() if loc_slot_after else "未知"
-        print(f"  🎉 邮编设置完成，当前配送定位显示为: 【{after_text.replace(chr(10), ' ')}】")
+        # 点击 Done 确认按钮（如果出现）
+        done_btn = page.query_selector('button[name="glowDoneButton"], .a-popover-footer button, #GLUXConfirmClose')
+        if done_btn:
+            try:
+                done_btn.click(timeout=3000)
+            except Exception:
+                pass
+            page.wait_for_timeout(2000)
+            
+        page.wait_for_load_state('domcontentloaded')
+        
+        # 验证结果
+        after_text = page.inner_text('#nav-global-location-slot') if page.query_selector('#nav-global-location-slot') else ""
+        print(f"  🎉 邮编切换完成，当前定位: 【{after_text.replace(chr(10), ' ')}】")
         return True
     except Exception as e:
         print(f"  ⚠️ 切换邮编发生异常: {e}")
-        # 如果卡住弹窗，强制按一次 Escape 键
         try:
             page.keyboard.press("Escape")
         except Exception:
@@ -268,6 +253,12 @@ def run_monitor():
                 city = loc.get("city", "未知城市")
                 zip_code = loc.get("zip", "")
                 
+                # 切换前确保在站点主页或正常页面环境，保证导航栏元素存在
+                if not page.query_selector('#nav-global-location-slot'):
+                    print(f"🏠 正在返回 {site_name} 首页以便切换定位...")
+                    page.goto(base_url, wait_until="domcontentloaded", timeout=30000)
+                    handle_captcha_if_needed(page)
+
                 # 切换至目标城市邮编
                 if zip_code:
                     switch_location_zip(page, city, zip_code)
