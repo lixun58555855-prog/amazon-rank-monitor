@@ -1,0 +1,41 @@
+name: Amazon ASIN Rank Monitor
+
+on:
+  schedule:
+    # 每天 UTC 时间 0点、6点、12点、18点各执行一次（每6小时一次）
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # 支持在 GitHub 网页上手动一键点击触发
+
+jobs:
+  check-ranks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出仓库代码 (Checkout Repo)
+        uses: actions/checkout@v4
+
+      - name: 设置 Python 运行环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 安装 Python 依赖库
+        run: |
+          pip install -r requirements.txt
+
+      - name: 安装 Playwright 浏览器核心与系统依赖
+        run: |
+          playwright install chromium --with-deps
+
+      - name: 执行关键词与 ASIN 排名监控
+        run: |
+          python monitor.py
+
+      - name: 归档监控数据为 Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amazon-rank-report
+          path: rank_report.json
+          retention-days: 14
